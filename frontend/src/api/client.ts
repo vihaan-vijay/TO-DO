@@ -10,10 +10,13 @@ class ApiClient {
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-      ...options.headers,
+    const headers: Record<string, string> = {
+      ...(options.headers as Record<string, string> || {}),
     };
+
+    if (options.body) {
+      headers['Content-Type'] = 'application/json';
+    }
 
     const response = await fetch(`${this.baseUrl}${endpoint}`, {
       ...options,
