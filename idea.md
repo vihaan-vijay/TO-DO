@@ -1,4 +1,4 @@
-we are gonna create a TODO we app using 
+<!-- we are gonna create a TODO we app using 
 1. frontend - React
 2.  fastify - frame work
 3. prisma[ORM] - db manager
@@ -11,4 +11,43 @@ React Frontend → Netlify
         ↓
 Fastify Backend → Render
         ↓
-PostgreSQL DB → Supabase
+PostgreSQL DB → Supabase  -->
+
+---------------------------------------------------------------
+FEATURES TO IMPLEMENT :
+
+. Categories / Tags
+
+Example:
+
+Work
+Personal
+College
+
+Drag and Drop Todos
+
+Use:
+
+dnd-kit
+react-beautiful-dnd
+
+Users can reorder tasks.
+
+Due Dates & Deadlines
+
+Add:
+
+calendar picker
+overdue highlighting
+reminders
+
+Dark Mode
+
+VERY good frontend feature.
+
+Use:
+
+dark mode
+
+Dashboard Analytics
+

@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { Check, Trash2, Edit3, Clock, Flag, Tag, ChevronDown, ChevronUp, Plus, X } from 'lucide-react';
+import { Check, Trash2, Edit3, Clock, Flag, Tag, ChevronDown, Plus, X, GripVertical } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import confetti from 'canvas-confetti';
 import type { Task } from '../types';
 
@@ -52,6 +54,20 @@ export function TaskCard({
   const [newSubtask, setNewSubtask] = useState('');
   const [showSubtaskInput, setShowSubtaskInput] = useState(false);
   const priority = priorityConfig[task.priority];
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: task.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
   const completedSubtasks = task.subtasks.filter((s) => s.completed).length;
   const totalSubtasks = task.subtasks.length;
   const progressPercent = totalSubtasks === 0 ? 0 : Math.round((completedSubtasks / totalSubtasks) * 100);
@@ -77,15 +93,20 @@ export function TaskCard({
 
   return (
     <motion.div
+      ref={setNodeRef}
+      style={style}
       layout
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.25, type: 'spring', bounce: 0.2 }}
-      className={`task-card glass ${task.completed ? 'task-completed' : ''} ${isOverdue(task.dueDate) && !task.completed ? 'task-overdue' : ''}`}
+      className={`task-card glass ${task.completed ? 'task-completed' : ''} ${isOverdue(task.dueDate) && !task.completed ? 'task-overdue' : ''} ${isDragging ? 'task-card-dragging' : ''}`}
       id={`task-${task.id}`}
     >
       <div className="task-card-main">
+        <div className="drag-handle" {...attributes} {...listeners}>
+          <GripVertical size={14} />
+        </div>
         <button
           className={`task-check ${task.completed ? 'checked' : ''}`}
           onClick={handleToggleWrapper}
