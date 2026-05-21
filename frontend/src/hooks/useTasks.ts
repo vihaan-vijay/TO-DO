@@ -40,9 +40,18 @@ export function useTasks(initialFilters?: TaskFilters) {
   }, []);
 
   const deleteTask = useCallback(async (id: string) => {
-    await api.deleteTask(id);
+    // Optimistic UI Update: Remove the task from the screen immediately
     setTasks((prev) => prev.filter((t) => t.id !== id));
-  }, []);
+    
+    try {
+      // Perform the actual deletion in the background
+      await api.deleteTask(id);
+    } catch (err) {
+      // If the deletion fails, refetch the tasks from the server to restore it
+      console.error("Failed to delete task:", err);
+      fetchTasks();
+    }
+  }, [fetchTasks]);
 
   const toggleTask = useCallback(async (id: string) => {
     const res = await api.toggleTask(id);
