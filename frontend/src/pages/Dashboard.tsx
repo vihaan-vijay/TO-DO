@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AnimatePresence } from 'framer-motion';
 import { Plus, ListChecks, CheckCircle2, Clock, Loader2 } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { TaskCard } from '../components/TaskCard';
@@ -153,18 +154,20 @@ export function Dashboard() {
               </button>
             </div>
           ) : (
-            tasks.map((task) => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                onToggle={handleToggle}
-                onDelete={handleDelete}
-                onEdit={setEditingTask}
-                onAddSubtask={handleAddSubtask}
-                onToggleSubtask={handleToggleSubtask}
-                onDeleteSubtask={handleDeleteSubtask}
-              />
-            ))
+            <AnimatePresence mode="popLayout">
+              {tasks.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onToggle={handleToggle}
+                  onDelete={handleDelete}
+                  onEdit={setEditingTask}
+                  onAddSubtask={handleAddSubtask}
+                  onToggleSubtask={handleToggleSubtask}
+                  onDeleteSubtask={handleDeleteSubtask}
+                />
+              ))}
+            </AnimatePresence>
           )}
         </div>
       </main>

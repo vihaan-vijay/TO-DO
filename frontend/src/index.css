@@ -48,6 +48,39 @@
 }
 
 /* ============================================
+   Dark Theme
+   ============================================ */
+[data-theme='dark'] {
+  --bg: #0f1117;
+  --bg-secondary: #050505;
+  --bg-card: #161821;
+  --bg-hover: #1e212b;
+  --bg-input: #1a1c23;
+  --bg-overlay: rgba(0, 0, 0, 0.6);
+
+  --accent: #818cf8;
+  --accent-light: #6366f1;
+  --accent-bg: rgba(129, 140, 248, 0.15);
+  --accent-border: rgba(129, 140, 248, 0.3);
+
+  --text: #f3f4f6;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+
+  --border: #272a35;
+  --border-light: #1f222b;
+}
+
+/* Glassmorphism Utilities */
+.glass {
+  background: var(--bg-overlay);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+
+
+/* ============================================
    Reset
    ============================================ */
 *, *::before, *::after {
