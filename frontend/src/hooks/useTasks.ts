@@ -28,75 +28,124 @@ export function useTasks(initialFilters?: TaskFilters) {
   }, [fetchTasks]);
 
   const createTask = useCallback(async (data: CreateTaskInput) => {
-    const res = await api.createTask(data);
-    setTasks((prev) => [res.task, ...prev]);
-    return res.task;
+    // Optimistic UI for Create
+    const tempId = `temp-${Date.now()}`;
+    const mockTask: Task = {
+      id: tempId,
+      title: data.title,
+      description: data.description || null,
+      completed: false,
+      priority: data.priority || 'MEDIUM',
+      dueDate: data.dueDate ? new Date(data.dueDate).toISOString() : null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      subtasks: (data.subtasks || []).map((t, i) => ({ id: `sub-temp-${i}`, title: t, completed: false, taskId: tempId, createdAt: new Date().toISOString() })),
+      tags: (data.tags || []).map((t) => ({ id: `tag-temp-${t}`, name: t }))
+    };
+
+    setTasks((prev) => [mockTask, ...prev]);
+
+    try {
+      const res = await api.createTask(data);
+      // Replace mock with real
+      setTasks((prev) => prev.map((t) => (t.id === tempId ? res.task : t)));
+      return res.task;
+    } catch (err) {
+      setTasks((prev) => prev.filter((t) => t.id !== tempId));
+      throw err;
+    }
   }, []);
 
   const updateTask = useCallback(async (id: string, data: UpdateTaskInput) => {
-    const res = await api.updateTask(id, data);
-    setTasks((prev) => prev.map((t) => (t.id === id ? res.task : t)));
-    return res.task;
-  }, []);
+    try {
+      const res = await api.updateTask(id, data);
+      setTasks((prev) => prev.map((t) => (t.id === id ? res.task : t)));
+      return res.task;
+    } catch (err) {
+      fetchTasks();
+      throw err;
+    }
+  }, [fetchTasks]);
 
   const deleteTask = useCallback(async (id: string) => {
-    // Optimistic UI Update: Remove the task from the screen immediately
     setTasks((prev) => prev.filter((t) => t.id !== id));
-    
     try {
-      // Perform the actual deletion in the background
       await api.deleteTask(id);
     } catch (err) {
-      // If the deletion fails, refetch the tasks from the server to restore it
       console.error("Failed to delete task:", err);
       fetchTasks();
     }
   }, [fetchTasks]);
 
   const toggleTask = useCallback(async (id: string) => {
-    const res = await api.toggleTask(id);
-    setTasks((prev) => prev.map((t) => (t.id === id ? res.task : t)));
-    return res.task;
-  }, []);
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t)));
+    try {
+      const res = await api.toggleTask(id);
+      setTasks((prev) => prev.map((t) => (t.id === id ? res.task : t)));
+      return res.task;
+    } catch (err) {
+      fetchTasks();
+      throw err;
+    }
+  }, [fetchTasks]);
 
   // Subtask operations
   const addSubtask = useCallback(async (taskId: string, title: string) => {
-    const res = await api.addSubtask(taskId, title);
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === taskId ? { ...t, subtasks: [...t.subtasks, res.subtask] } : t
-      )
-    );
-    return res.subtask;
-  }, []);
+    try {
+      const res = await api.addSubtask(taskId, title);
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === taskId ? { ...t, subtasks: [...t.subtasks, res.subtask] } : t
+        )
+      );
+      return res.subtask;
+    } catch (err) {
+      fetchTasks();
+      throw err;
+    }
+  }, [fetchTasks]);
 
   const toggleSubtask = useCallback(async (taskId: string, subtaskId: string) => {
-    const res = await api.toggleSubtask(taskId, subtaskId);
     setTasks((prev) =>
       prev.map((t) =>
         t.id === taskId
           ? {
               ...t,
               subtasks: t.subtasks.map((s) =>
-                s.id === subtaskId ? res.subtask : s
+                s.id === subtaskId ? { ...s, completed: !s.completed } : s
               ),
             }
           : t
       )
     );
-    return res.subtask;
-  }, []);
+    try {
+      const res = await api.toggleSubtask(taskId, subtaskId);
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === taskId
+            ? { ...t, subtasks: t.subtasks.map((s) => (s.id === subtaskId ? res.subtask : s)) }
+            : t
+        )
+      );
+      return res.subtask;
+    } catch (err) {
+      fetchTasks();
+      throw err;
+    }
+  }, [fetchTasks]);
 
   const deleteSubtask = useCallback(async (taskId: string, subtaskId: string) => {
-    await api.deleteSubtask(taskId, subtaskId);
     setTasks((prev) =>
       prev.map((t) =>
-        t.id === taskId
-          ? { ...t, subtasks: t.subtasks.filter((s) => s.id !== subtaskId) }
-          : t
+        t.id === taskId ? { ...t, subtasks: t.subtasks.filter((s) => s.id !== subtaskId) } : t
       )
     );
-  }, []);
+    try {
+      await api.deleteSubtask(taskId, subtaskId);
+    } catch (err) {
+      fetchTasks();
+    }
+  }, [fetchTasks]);
 
   return {
     tasks,
