@@ -135,7 +135,7 @@ export default async function taskRoutes(fastify: FastifyInstance) {
         return reply.status(201).send({ task });
       } catch (err) {
         if (err instanceof z.ZodError) {
-          return reply.status(400).send({ error: "Validation Error", details: err.errors });
+          return reply.status(400).send({ error: "Validation Error", details: err.issues });
         }
         throw err;
       }
@@ -206,7 +206,7 @@ export default async function taskRoutes(fastify: FastifyInstance) {
         return reply.send({ task });
       } catch (err) {
         if (err instanceof z.ZodError) {
-          return reply.status(400).send({ error: "Validation Error", details: err.errors });
+          return reply.status(400).send({ error: "Validation Error", details: err.issues });
         }
         throw err;
       }
@@ -279,7 +279,7 @@ export default async function taskRoutes(fastify: FastifyInstance) {
         return reply.status(201).send({ subtask });
       } catch (err) {
         if (err instanceof z.ZodError) {
-          return reply.status(400).send({ error: "Validation Error", details: err.errors });
+          return reply.status(400).send({ error: "Validation Error", details: err.issues });
         }
         throw err;
       }
