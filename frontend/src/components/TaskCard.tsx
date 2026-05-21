@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import confetti from 'canvas-confetti';
+import toast from 'react-hot-toast';
 import type { Task } from '../types';
 
 interface TaskCardProps {
@@ -79,8 +80,20 @@ export function TaskCard({
     setShowSubtaskInput(false);
   };
 
-  const handleToggleWrapper = () => {
+  const handleToggleWrapper = (e: React.MouseEvent) => {
+    // CRITICAL: Stop propagation so the dnd-kit PointerSensor
+    // does NOT intercept this click and trigger on other task cards.
+    e.stopPropagation();
+
+    // Optimistic toast: fire immediately before the async call
+    if (!task.completed) {
+      toast.success('Done ✓');
+    } else {
+      toast('Reopened', { icon: '↩️' });
+    }
+
     onToggle(task.id);
+
     if (!task.completed && task.priority === 'HIGH') {
       confetti({
         particleCount: 120,
