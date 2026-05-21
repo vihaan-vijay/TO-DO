@@ -34,10 +34,10 @@ export function Dashboard() {
   ).length;
 
   const handleCreate = async (data: CreateTaskInput) => {
+    setShowForm(false);
+    toast.success('Task created');
     try {
       await createTask(data);
-      setShowForm(false);
-      toast.success('Task created');
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Failed to create task');
     }
@@ -45,28 +45,31 @@ export function Dashboard() {
 
   const handleUpdate = async (data: CreateTaskInput) => {
     if (!editingTask) return;
+    setEditingTask(null);
+    toast.success('Task updated');
     try {
       await updateTask(editingTask.id, data as UpdateTaskInput);
-      setEditingTask(null);
-      toast.success('Task updated');
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Failed to update task');
     }
   };
 
   const handleDelete = async (id: string) => {
+    toast.success('Task deleted');
     try {
       await deleteTask(id);
-      toast.success('Task deleted');
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete task');
     }
   };
 
   const handleToggle = async (id: string) => {
+    const task = tasks.find((t) => t.id === id);
+    if (!task) return;
+    
+    toast.success(!task.completed ? 'Done ✓' : 'Reopened');
     try {
-      const task = await toggleTask(id);
-      toast.success(task.completed ? 'Done ✓' : 'Reopened');
+      await toggleTask(id);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Failed to toggle task');
     }
