@@ -54,6 +54,7 @@ export function TaskForm({ task, onSubmit, onClose }: TaskFormProps) {
       tags: tags.length > 0 ? tags : undefined,
       subtasks: subtasks.length > 0 ? subtasks : undefined,
     });
+    onClose();
   };
 
   return (
