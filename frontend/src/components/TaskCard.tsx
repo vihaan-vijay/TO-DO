@@ -42,6 +42,11 @@ function isOverdue(dateStr: string | null): boolean {
   return new Date(dateStr) < new Date();
 }
 
+// ─── The industry standard fix for dnd-kit + interactive elements ──────────
+// Block pointerdown on ALL interactive elements so the PointerSensor never
+// mistakes a click on a button/input for the start of a drag gesture.
+const stopPointer = (e: React.PointerEvent) => e.stopPropagation();
+
 export function TaskCard({
   task,
   onToggle,
@@ -69,6 +74,7 @@ export function TaskCard({
     transform: CSS.Transform.toString(transform),
     transition,
   };
+
   const completedSubtasks = task.subtasks.filter((s) => s.completed).length;
   const totalSubtasks = task.subtasks.length;
   const progressPercent = totalSubtasks === 0 ? 0 : Math.round((completedSubtasks / totalSubtasks) * 100);
@@ -80,28 +86,22 @@ export function TaskCard({
     setShowSubtaskInput(false);
   };
 
-  const handleToggleWrapper = (e: React.MouseEvent) => {
-    // CRITICAL: Stop propagation so the dnd-kit PointerSensor
-    // does NOT intercept this click and trigger on other task cards.
-    e.stopPropagation();
-
-    // Optimistic toast: fire immediately before the async call
+  const handleToggleWrapper = () => {
+    // Optimistic toast — fires instantly
     if (!task.completed) {
       toast.success('Done ✓');
+      if (task.priority === 'HIGH') {
+        confetti({
+          particleCount: 120,
+          spread: 80,
+          origin: { y: 0.6 },
+          colors: ['#6366f1', '#818cf8', '#22c55e', '#f59e0b', '#ef4444'],
+        });
+      }
     } else {
-      toast('Reopened', { icon: '↩️' });
+      toast.success('Reopened ✓');
     }
-
     onToggle(task.id);
-
-    if (!task.completed && task.priority === 'HIGH') {
-      confetti({
-        particleCount: 120,
-        spread: 80,
-        origin: { y: 0.6 },
-        colors: ['#6366f1', '#818cf8', '#22c55e', '#f59e0b', '#ef4444'],
-      });
-    }
   };
 
   return (
@@ -117,18 +117,27 @@ export function TaskCard({
       id={`task-${task.id}`}
     >
       <div className="task-card-main">
+        {/* Drag handle — the ONLY element that has dnd-kit listeners */}
         <div className="drag-handle" {...attributes} {...listeners}>
           <GripVertical size={14} />
         </div>
+
+        {/* Checkbox — blocks pointerdown so dnd never sees it */}
         <button
           className={`task-check ${task.completed ? 'checked' : ''}`}
+          onPointerDown={stopPointer}
           onClick={handleToggleWrapper}
           id={`toggle-${task.id}`}
         >
           {task.completed && <Check size={12} strokeWidth={3} />}
         </button>
 
-        <div className="task-content" onClick={() => setExpanded(!expanded)}>
+        {/* Task content — blocks pointerdown so expanding doesn't start a drag */}
+        <div
+          className="task-content"
+          onPointerDown={stopPointer}
+          onClick={() => setExpanded(!expanded)}
+        >
           <h3 className="task-title">{task.title}</h3>
           <div className="task-meta">
             <span className={`task-priority ${priority.className}`}>
@@ -153,11 +162,11 @@ export function TaskCard({
               </span>
             )}
           </div>
-          
+
           {/* Progress Bar */}
           {totalSubtasks > 0 && (
             <div style={{ marginTop: '8px', height: '4px', background: 'var(--border)', borderRadius: '2px', overflow: 'hidden' }}>
-              <motion.div 
+              <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${progressPercent}%` }}
                 transition={{ duration: 0.5, ease: 'easeOut' }}
@@ -167,7 +176,8 @@ export function TaskCard({
           )}
         </div>
 
-        <div className="task-actions">
+        {/* Action buttons — all block pointerdown */}
+        <div className="task-actions" onPointerDown={stopPointer}>
           <button className="btn-icon-sm" onClick={() => onEdit(task)} title="Edit">
             <Edit3 size={14} />
           </button>
@@ -187,13 +197,14 @@ export function TaskCard({
       {/* Expanded Section */}
       <AnimatePresence>
         {expanded && (
-          <motion.div 
+          <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
             className="task-expanded"
             style={{ overflow: 'hidden' }}
+            onPointerDown={stopPointer}
           >
             {task.description && (
               <p className="task-description">{task.description}</p>
@@ -214,7 +225,7 @@ export function TaskCard({
 
               <AnimatePresence>
                 {showSubtaskInput && (
-                  <motion.div 
+                  <motion.div
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
@@ -242,7 +253,7 @@ export function TaskCard({
 
               <AnimatePresence>
                 {task.subtasks.map((subtask) => (
-                  <motion.div 
+                  <motion.div
                     key={subtask.id}
                     layout
                     initial={{ opacity: 0, x: -10 }}
@@ -252,6 +263,7 @@ export function TaskCard({
                   >
                     <button
                       className={`subtask-check ${subtask.completed ? 'checked' : ''}`}
+                      onPointerDown={stopPointer}
                       onClick={() => onToggleSubtask(task.id, subtask.id)}
                     >
                       {subtask.completed && <Check size={10} strokeWidth={3} />}
@@ -259,6 +271,7 @@ export function TaskCard({
                     <span className="subtask-title">{subtask.title}</span>
                     <button
                       className="btn-icon-sm btn-icon-danger subtask-delete"
+                      onPointerDown={stopPointer}
                       onClick={() => onDeleteSubtask(task.id, subtask.id)}
                     >
                       <X size={12} />
