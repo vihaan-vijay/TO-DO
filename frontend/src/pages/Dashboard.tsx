@@ -157,9 +157,21 @@ export function Dashboard() {
   } = useTasks();
 
   // Local ordered task list for drag and drop
+  // Smart merge: preserve user's drag-drop ordering while syncing server data
   const [orderedTasks, setOrderedTasks] = useState<Task[]>([]);
   useEffect(() => {
-    setOrderedTasks(fetchedTasks);
+    setOrderedTasks((prev) => {
+      // Build a map of the latest server data
+      const serverMap = new Map(fetchedTasks.map((t) => [t.id, t]));
+      // Keep existing order, updating data for tasks that still exist
+      const merged = prev
+        .filter((t) => serverMap.has(t.id) || t.id.startsWith('temp-'))
+        .map((t) => (serverMap.get(t.id) ?? t));
+      // Add brand-new tasks (from server) that aren't already in the list
+      const existingIds = new Set(merged.map((t) => t.id));
+      const newTasks = fetchedTasks.filter((t) => !existingIds.has(t.id));
+      return [...newTasks, ...merged];
+    });
   }, [fetchedTasks]);
 
   const [showForm, setShowForm] = useState(false);
@@ -191,11 +203,12 @@ export function Dashboard() {
   }, []);
 
   const handleCreate = async (data: CreateTaskInput) => {
+    // Close form first, THEN create — the optimistic UI shows the task immediately
     setShowForm(false);
     try {
       await createTask(data);
     } catch {
-      // error handled in hook
+      // error handled in hook — optimistic task is rolled back automatically
     }
   };
 

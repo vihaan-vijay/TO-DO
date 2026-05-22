@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Task, TaskFilters, CreateTaskInput, UpdateTaskInput, PaginationInfo } from '../types';
 import { api } from '../api/client';
 
@@ -8,13 +8,18 @@ export function useTasks(initialFilters?: TaskFilters) {
   const [filters, setFilters] = useState<TaskFilters>(initialFilters || {});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Track pending creates so fetchTasks doesn't stomp optimistic UI
+  const pendingCreates = useRef(0);
 
   const fetchTasks = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
       const res = await api.getTasks(filters);
-      setTasks(res.tasks);
+      // Only overwrite state when no optimistic creates are in-flight
+      if (pendingCreates.current === 0) {
+        setTasks(res.tasks);
+      }
       setPagination(res.pagination);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to fetch tasks');
@@ -28,7 +33,6 @@ export function useTasks(initialFilters?: TaskFilters) {
   }, [fetchTasks]);
 
   const createTask = useCallback(async (data: CreateTaskInput) => {
-    // Optimistic UI for Create
     const tempId = `temp-${Date.now()}`;
     const mockTask: Task = {
       id: tempId,
@@ -36,29 +40,56 @@ export function useTasks(initialFilters?: TaskFilters) {
       description: data.description || null,
       completed: false,
       priority: data.priority || 'MEDIUM',
-      dueDate: data.dueDate ? new Date(data.dueDate).toISOString() : null,
+      dueDate: data.dueDate || null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      subtasks: (data.subtasks || []).map((t, i) => ({ id: `sub-temp-${i}`, title: t, completed: false, taskId: tempId, createdAt: new Date().toISOString() })),
-      tags: (data.tags || []).map((t) => ({ id: `tag-temp-${t}`, name: t }))
+      subtasks: (data.subtasks || []).map((t, i) => ({
+        id: `sub-temp-${i}`,
+        title: t,
+        completed: false,
+        taskId: tempId,
+        createdAt: new Date().toISOString(),
+      })),
+      tags: (data.tags || []).map((t) => ({ id: `tag-temp-${t}`, name: t })),
     };
 
+    pendingCreates.current += 1;
+    // Prepend optimistic task immediately
     setTasks((prev) => [mockTask, ...prev]);
 
     try {
       const res = await api.createTask(data);
-      // Replace mock with real
+      // Replace temp with real task from server
       setTasks((prev) => prev.map((t) => (t.id === tempId ? res.task : t)));
       return res.task;
     } catch (err) {
+      // Roll back on failure
       setTasks((prev) => prev.filter((t) => t.id !== tempId));
       throw err;
+    } finally {
+      pendingCreates.current -= 1;
     }
   }, []);
 
   const updateTask = useCallback(async (id: string, data: UpdateTaskInput) => {
+    // Optimistic update
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              ...(data.title !== undefined && { title: data.title }),
+              ...(data.description !== undefined && { description: data.description }),
+              ...(data.priority !== undefined && { priority: data.priority }),
+              ...(data.dueDate !== undefined && { dueDate: data.dueDate }),
+              ...(data.completed !== undefined && { completed: data.completed }),
+            }
+          : t
+      )
+    );
     try {
       const res = await api.updateTask(id, data);
+      // Sync with real server data
       setTasks((prev) => prev.map((t) => (t.id === id ? res.task : t)));
       return res.task;
     } catch (err) {
@@ -72,13 +103,15 @@ export function useTasks(initialFilters?: TaskFilters) {
     try {
       await api.deleteTask(id);
     } catch (err) {
-      console.error("Failed to delete task:", err);
+      console.error('Failed to delete task:', err);
       fetchTasks();
     }
   }, [fetchTasks]);
 
   const toggleTask = useCallback(async (id: string) => {
-    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t)));
+    setTasks((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t))
+    );
     try {
       const res = await api.toggleTask(id);
       setTasks((prev) => prev.map((t) => (t.id === id ? res.task : t)));
@@ -123,7 +156,12 @@ export function useTasks(initialFilters?: TaskFilters) {
       setTasks((prev) =>
         prev.map((t) =>
           t.id === taskId
-            ? { ...t, subtasks: t.subtasks.map((s) => (s.id === subtaskId ? res.subtask : s)) }
+            ? {
+                ...t,
+                subtasks: t.subtasks.map((s) =>
+                  s.id === subtaskId ? res.subtask : s
+                ),
+              }
             : t
         )
       );
@@ -137,12 +175,14 @@ export function useTasks(initialFilters?: TaskFilters) {
   const deleteSubtask = useCallback(async (taskId: string, subtaskId: string) => {
     setTasks((prev) =>
       prev.map((t) =>
-        t.id === taskId ? { ...t, subtasks: t.subtasks.filter((s) => s.id !== subtaskId) } : t
+        t.id === taskId
+          ? { ...t, subtasks: t.subtasks.filter((s) => s.id !== subtaskId) }
+          : t
       )
     );
     try {
       await api.deleteSubtask(taskId, subtaskId);
-    } catch (err) {
+    } catch {
       fetchTasks();
     }
   }, [fetchTasks]);

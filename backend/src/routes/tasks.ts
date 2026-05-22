@@ -3,10 +3,10 @@ import { z } from "zod";
 import { Priority } from "@prisma/client";
 
 const createTaskSchema = z.object({
-  title: z.string().min(1, "Title is required").max(200),
+  title: z.string().min(1, 'Title is required').max(200),
   description: z.string().max(2000).optional(),
-  priority: z.nativeEnum(Priority).optional().default("MEDIUM"),
-  dueDate: z.string().datetime().optional().nullable(),
+  priority: z.nativeEnum(Priority).optional().default('MEDIUM'),
+  dueDate: z.string().datetime({ offset: true }).optional().nullable(),
   tags: z.array(z.string()).optional(),
   subtasks: z.array(z.string().min(1)).optional(),
 });
@@ -16,7 +16,7 @@ const updateTaskSchema = z.object({
   description: z.string().max(2000).optional().nullable(),
   completed: z.boolean().optional(),
   priority: z.nativeEnum(Priority).optional(),
-  dueDate: z.string().datetime().optional().nullable(),
+  dueDate: z.string().datetime({ offset: true }).optional().nullable(),
   tags: z.array(z.string()).optional(),
 });
 

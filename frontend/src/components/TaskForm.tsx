@@ -50,7 +50,8 @@ export function TaskForm({ task, onSubmit, onClose }: TaskFormProps) {
       title: title.trim(),
       description: description.trim() || undefined,
       priority,
-      dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+      // Fix timezone bug: appending T12:00:00 prevents UTC conversion from shifting the date
+      dueDate: dueDate ? new Date(`${dueDate}T12:00:00`).toISOString() : null,
       tags: tags.length > 0 ? tags : undefined,
       subtasks: subtasks.length > 0 ? subtasks : undefined,
     });
