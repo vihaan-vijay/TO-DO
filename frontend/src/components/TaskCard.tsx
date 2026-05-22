@@ -9,12 +9,12 @@ import type { Task } from '../types';
 
 interface TaskCardProps {
   task: Task;
-  onToggle: (id: string) => void;
-  onDelete: (id: string) => void;
+  onToggle: (id: string) => void | Promise<void>;
+  onDelete: (id: string) => void | Promise<void>;
   onEdit: (task: Task) => void;
-  onAddSubtask: (taskId: string, title: string) => void;
-  onToggleSubtask: (taskId: string, subtaskId: string) => void;
-  onDeleteSubtask: (taskId: string, subtaskId: string) => void;
+  onAddSubtask: (taskId: string, title: string) => void | Promise<void>;
+  onToggleSubtask: (taskId: string, subtaskId: string) => void | Promise<void>;
+  onDeleteSubtask: (taskId: string, subtaskId: string) => void | Promise<void>;
 }
 
 const priorityConfig = {
@@ -176,8 +176,8 @@ export function TaskCard({
           )}
         </div>
 
-        {/* Action buttons — all block pointerdown */}
-        <div className="task-actions" onPointerDown={stopPointer}>
+        {/* Action buttons — all block pointerdown AND click propagation */}
+        <div className="task-actions" onPointerDown={stopPointer} onClick={(e) => e.stopPropagation()}>
           <button className="btn-icon-sm" onClick={() => onEdit(task)} title="Edit">
             <Edit3 size={14} />
           </button>

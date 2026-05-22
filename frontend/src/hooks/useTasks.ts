@@ -8,7 +8,8 @@ export function useTasks(initialFilters?: TaskFilters) {
   const [filters, setFilters] = useState<TaskFilters>(initialFilters || {});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Track pending creates so fetchTasks doesn't stomp optimistic UI
+
+  // Guards against fetchTasks overwriting an in-flight optimistic create
   const pendingCreates = useRef(0);
 
   const fetchTasks = useCallback(async () => {
@@ -16,7 +17,7 @@ export function useTasks(initialFilters?: TaskFilters) {
     setError(null);
     try {
       const res = await api.getTasks(filters);
-      // Only overwrite state when no optimistic creates are in-flight
+      // Never stomp optimistic creates that are still in-flight
       if (pendingCreates.current === 0) {
         setTasks(res.tasks);
       }
@@ -32,7 +33,8 @@ export function useTasks(initialFilters?: TaskFilters) {
     fetchTasks();
   }, [fetchTasks]);
 
-  const createTask = useCallback(async (data: CreateTaskInput) => {
+  // ── Create ────────────────────────────────────────────────────────────────────
+  const createTask = useCallback(async (data: CreateTaskInput): Promise<Task> => {
     const tempId = `temp-${Date.now()}`;
     const mockTask: Task = {
       id: tempId,
@@ -54,16 +56,15 @@ export function useTasks(initialFilters?: TaskFilters) {
     };
 
     pendingCreates.current += 1;
-    // Prepend optimistic task immediately
     setTasks((prev) => [mockTask, ...prev]);
 
     try {
       const res = await api.createTask(data);
-      // Replace temp with real task from server
+      // Swap the temp placeholder with the real server task
       setTasks((prev) => prev.map((t) => (t.id === tempId ? res.task : t)));
       return res.task;
     } catch (err) {
-      // Roll back on failure
+      // Roll back the optimistic entry on failure
       setTasks((prev) => prev.filter((t) => t.id !== tempId));
       throw err;
     } finally {
@@ -71,8 +72,9 @@ export function useTasks(initialFilters?: TaskFilters) {
     }
   }, []);
 
-  const updateTask = useCallback(async (id: string, data: UpdateTaskInput) => {
-    // Optimistic update
+  // ── Update ────────────────────────────────────────────────────────────────────
+  const updateTask = useCallback(async (id: string, data: UpdateTaskInput): Promise<Task> => {
+    // Apply optimistic changes immediately
     setTasks((prev) =>
       prev.map((t) =>
         t.id === id
@@ -89,16 +91,17 @@ export function useTasks(initialFilters?: TaskFilters) {
     );
     try {
       const res = await api.updateTask(id, data);
-      // Sync with real server data
+      // Sync with ground truth from server (tags may have changed etc.)
       setTasks((prev) => prev.map((t) => (t.id === id ? res.task : t)));
       return res.task;
     } catch (err) {
-      fetchTasks();
+      fetchTasks(); // Revert on error
       throw err;
     }
   }, [fetchTasks]);
 
-  const deleteTask = useCallback(async (id: string) => {
+  // ── Delete ────────────────────────────────────────────────────────────────────
+  const deleteTask = useCallback(async (id: string): Promise<void> => {
     setTasks((prev) => prev.filter((t) => t.id !== id));
     try {
       await api.deleteTask(id);
@@ -108,22 +111,22 @@ export function useTasks(initialFilters?: TaskFilters) {
     }
   }, [fetchTasks]);
 
-  const toggleTask = useCallback(async (id: string) => {
+  // ── Toggle ────────────────────────────────────────────────────────────────────
+  const toggleTask = useCallback(async (id: string): Promise<void> => {
     setTasks((prev) =>
       prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t))
     );
     try {
       const res = await api.toggleTask(id);
       setTasks((prev) => prev.map((t) => (t.id === id ? res.task : t)));
-      return res.task;
     } catch (err) {
       fetchTasks();
       throw err;
     }
   }, [fetchTasks]);
 
-  // Subtask operations
-  const addSubtask = useCallback(async (taskId: string, title: string) => {
+  // ── Subtasks ──────────────────────────────────────────────────────────────────
+  const addSubtask = useCallback(async (taskId: string, title: string): Promise<void> => {
     try {
       const res = await api.addSubtask(taskId, title);
       setTasks((prev) =>
@@ -131,14 +134,14 @@ export function useTasks(initialFilters?: TaskFilters) {
           t.id === taskId ? { ...t, subtasks: [...t.subtasks, res.subtask] } : t
         )
       );
-      return res.subtask;
     } catch (err) {
       fetchTasks();
       throw err;
     }
   }, [fetchTasks]);
 
-  const toggleSubtask = useCallback(async (taskId: string, subtaskId: string) => {
+  const toggleSubtask = useCallback(async (taskId: string, subtaskId: string): Promise<void> => {
+    // Optimistic toggle
     setTasks((prev) =>
       prev.map((t) =>
         t.id === taskId
@@ -165,14 +168,13 @@ export function useTasks(initialFilters?: TaskFilters) {
             : t
         )
       );
-      return res.subtask;
     } catch (err) {
       fetchTasks();
       throw err;
     }
   }, [fetchTasks]);
 
-  const deleteSubtask = useCallback(async (taskId: string, subtaskId: string) => {
+  const deleteSubtask = useCallback(async (taskId: string, subtaskId: string): Promise<void> => {
     setTasks((prev) =>
       prev.map((t) =>
         t.id === taskId

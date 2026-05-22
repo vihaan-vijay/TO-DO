@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { Plus, ListChecks, CheckCircle2, Clock, Loader2, BarChart2, Zap } from 'lucide-react';
 import {
@@ -113,18 +113,17 @@ function useDueDateReminders(tasks: Task[]) {
     if (Notification.permission === 'default') {
       Notification.requestPermission();
     }
-
     const check = () => {
       if (Notification.permission !== 'granted') return;
       const today = new Date();
       tasks.forEach((task) => {
         if (task.completed || !task.dueDate) return;
         const due = new Date(task.dueDate);
-        const isTodayOrOverdue =
+        const isToday =
           due.getFullYear() === today.getFullYear() &&
           due.getMonth() === today.getMonth() &&
           due.getDate() === today.getDate();
-        if (isTodayOrOverdue) {
+        if (isToday) {
           new Notification('⏰ Task Due Today — TaskFlow', {
             body: task.title,
             icon: '/vite.svg',
@@ -133,9 +132,8 @@ function useDueDateReminders(tasks: Task[]) {
         }
       });
     };
-
     check();
-    const interval = setInterval(check, 60 * 1000);
+    const interval = setInterval(check, 60_000);
     return () => clearInterval(interval);
   }, [tasks]);
 }
@@ -143,7 +141,7 @@ function useDueDateReminders(tasks: Task[]) {
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 export function Dashboard() {
   const {
-    tasks: fetchedTasks,
+    tasks,
     filters,
     setFilters,
     isLoading,
@@ -156,37 +154,62 @@ export function Dashboard() {
     deleteSubtask,
   } = useTasks();
 
-  const [taskOrder, setTaskOrder] = useState<string[]>([]);
+  /**
+   * ORDERING: We only store task IDs for ordering — the actual task data
+   * always comes from `tasks` (single source of truth). This eliminates
+   * the duplication bug caused by maintaining two full task arrays.
+   *
+   * We use a ref to track the PREVIOUS set of IDs so we can detect
+   * genuine additions/removals without firing on every reference change.
+   */
+  const [orderedIds, setOrderedIds] = useState<string[]>([]);
+  const prevIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const incomingIds = tasks.map((t) => t.id);
+    const incomingSet = new Set(incomingIds);
+    const prevSet = prevIdsRef.current;
+
+    // Check if the SET of IDs has actually changed (not just the array reference)
+    const added = incomingIds.filter((id) => !prevSet.has(id));
+    const removed = [...prevSet].filter((id) => !incomingSet.has(id));
+
+    if (added.length === 0 && removed.length === 0) {
+      // Only data changed (e.g., toggle, update) — no reorder needed
+      prevIdsRef.current = incomingSet;
+      return;
+    }
+
+    prevIdsRef.current = incomingSet;
+
+    setOrderedIds((prev) => {
+      // Remove IDs that no longer exist
+      const pruned = prev.filter((id) => incomingSet.has(id));
+      // Prepend brand-new IDs (newly created tasks show at top)
+      const prunedSet = new Set(pruned);
+      const newIds = incomingIds.filter((id) => !prunedSet.has(id));
+      return [...newIds, ...pruned];
+    });
+  }, [tasks]);
+
+  // Build display list: map ordered IDs → task objects (always fresh from hook)
+  const taskMap = new Map(tasks.map((t) => [t.id, t]));
+  const displayTasks = orderedIds.map((id) => taskMap.get(id)).filter(Boolean) as Task[];
+
   const [showForm, setShowForm] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
 
-  useEffect(() => {
-    setTaskOrder((prev) => {
-      const fetchedIds = fetchedTasks.map((t) => t.id);
-      const fetchedSet = new Set(fetchedIds);
-      const prevSet = new Set(prev);
-      // New IDs not yet in our order list — prepend them
-      const newIds = fetchedIds.filter((id) => !prevSet.has(id));
-      // Remove IDs that no longer exist in the fetched list
-      const kept = prev.filter((id) => fetchedSet.has(id));
-      return [...newIds, ...kept];
-    });
-  }, [fetchedTasks]);
+  useDueDateReminders(displayTasks);
 
-  const orderedTasks = useMemo(() => {
-    const map = new Map(fetchedTasks.map((t) => [t.id, t]));
-    return taskOrder.map((id) => map.get(id)).filter(Boolean) as Task[];
-  }, [taskOrder, fetchedTasks]);
-
-  useDueDateReminders(orderedTasks);
-
-  const totalTasks = fetchedTasks.length;
-  const completedTasks = fetchedTasks.filter((t) => t.completed).length;
+  // Stats always from the hook's canonical data (no display-layer distortion)
+  const totalTasks = tasks.length;
+  const completedTasks = tasks.filter((t) => t.completed).length;
   const pendingTasks = totalTasks - completedTasks;
-  const overdueTasks = fetchedTasks.filter(
+  const overdueTasks = tasks.filter(
     (t) => !t.completed && t.dueDate && new Date(t.dueDate) < new Date()
   ).length;
 
+  // ── DnD ──────────────────────────────────────────────────────────────────────
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -195,13 +218,14 @@ export function Dashboard() {
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    setTaskOrder((prev) => {
+    setOrderedIds((prev) => {
       const oldIndex = prev.indexOf(active.id as string);
       const newIndex = prev.indexOf(over.id as string);
       return arrayMove(prev, oldIndex, newIndex);
     });
   }, []);
 
+  // ── Handlers ─────────────────────────────────────────────────────────────────
   const handleCreate = async (data: CreateTaskInput) => {
     setShowForm(false);
     try {
@@ -221,6 +245,7 @@ export function Dashboard() {
     }
   };
 
+  // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div className="dashboard">
       <Navbar />
@@ -253,7 +278,7 @@ export function Dashboard() {
         </div>
 
         {/* Analytics Panel */}
-        {totalTasks > 0 && <AnalyticsPanel tasks={orderedTasks} />}
+        {totalTasks > 0 && <AnalyticsPanel tasks={displayTasks} />}
 
         {/* Toolbar */}
         <div className="dashboard-toolbar">
@@ -266,12 +291,13 @@ export function Dashboard() {
 
         {/* Task List */}
         <div className="task-list">
-          {isLoading ? (
+          {isLoading && displayTasks.length === 0 ? (
+            // Only show spinner on the very first load (no tasks visible yet)
             <div className="task-list-empty">
               <Loader2 size={28} className="spin" />
-              <p>Loading...</p>
+              <p>Loading your tasks...</p>
             </div>
-          ) : orderedTasks.length === 0 ? (
+          ) : !isLoading && displayTasks.length === 0 ? (
             <div className="task-list-empty">
               <ListChecks size={40} className="empty-icon" />
               <h3>No tasks yet</h3>
@@ -283,9 +309,9 @@ export function Dashboard() {
             </div>
           ) : (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={taskOrder} strategy={verticalListSortingStrategy}>
+              <SortableContext items={orderedIds} strategy={verticalListSortingStrategy}>
                 <AnimatePresence mode="popLayout">
-                  {orderedTasks.map((task) => (
+                  {displayTasks.map((task) => (
                     <TaskCard
                       key={task.id}
                       task={task}
