@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { Plus, ListChecks, CheckCircle2, Clock, Loader2, BarChart2, Zap } from 'lucide-react';
 import {
@@ -156,37 +156,37 @@ export function Dashboard() {
     deleteSubtask,
   } = useTasks();
 
-  // Local ordered task list for drag and drop
-  // Smart merge: preserve user's drag-drop ordering while syncing server data
-  const [orderedTasks, setOrderedTasks] = useState<Task[]>([]);
-  useEffect(() => {
-    setOrderedTasks((prev) => {
-      // Build a map of the latest server data
-      const serverMap = new Map(fetchedTasks.map((t) => [t.id, t]));
-      // Keep existing order, updating data for tasks that still exist
-      const merged = prev
-        .filter((t) => serverMap.has(t.id) || t.id.startsWith('temp-'))
-        .map((t) => (serverMap.get(t.id) ?? t));
-      // Add brand-new tasks (from server) that aren't already in the list
-      const existingIds = new Set(merged.map((t) => t.id));
-      const newTasks = fetchedTasks.filter((t) => !existingIds.has(t.id));
-      return [...newTasks, ...merged];
-    });
-  }, [fetchedTasks]);
-
+  const [taskOrder, setTaskOrder] = useState<string[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
 
+  useEffect(() => {
+    setTaskOrder((prev) => {
+      const fetchedIds = fetchedTasks.map((t) => t.id);
+      const fetchedSet = new Set(fetchedIds);
+      const prevSet = new Set(prev);
+      // New IDs not yet in our order list — prepend them
+      const newIds = fetchedIds.filter((id) => !prevSet.has(id));
+      // Remove IDs that no longer exist in the fetched list
+      const kept = prev.filter((id) => fetchedSet.has(id));
+      return [...newIds, ...kept];
+    });
+  }, [fetchedTasks]);
+
+  const orderedTasks = useMemo(() => {
+    const map = new Map(fetchedTasks.map((t) => [t.id, t]));
+    return taskOrder.map((id) => map.get(id)).filter(Boolean) as Task[];
+  }, [taskOrder, fetchedTasks]);
+
   useDueDateReminders(orderedTasks);
 
-  const totalTasks = orderedTasks.length;
-  const completedTasks = orderedTasks.filter((t) => t.completed).length;
+  const totalTasks = fetchedTasks.length;
+  const completedTasks = fetchedTasks.filter((t) => t.completed).length;
   const pendingTasks = totalTasks - completedTasks;
-  const overdueTasks = orderedTasks.filter(
+  const overdueTasks = fetchedTasks.filter(
     (t) => !t.completed && t.dueDate && new Date(t.dueDate) < new Date()
   ).length;
 
-  // DnD sensors
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -195,20 +195,19 @@ export function Dashboard() {
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    setOrderedTasks((prev) => {
-      const oldIndex = prev.findIndex((t) => t.id === active.id);
-      const newIndex = prev.findIndex((t) => t.id === over.id);
+    setTaskOrder((prev) => {
+      const oldIndex = prev.indexOf(active.id as string);
+      const newIndex = prev.indexOf(over.id as string);
       return arrayMove(prev, oldIndex, newIndex);
     });
   }, []);
 
   const handleCreate = async (data: CreateTaskInput) => {
-    // Close form first, THEN create — the optimistic UI shows the task immediately
     setShowForm(false);
     try {
       await createTask(data);
     } catch {
-      // error handled in hook — optimistic task is rolled back automatically
+      // Optimistic task is rolled back automatically in useTasks on failure
     }
   };
 
@@ -217,46 +216,6 @@ export function Dashboard() {
     setEditingTask(null);
     try {
       await updateTask(editingTask.id, data as UpdateTaskInput);
-    } catch {
-      // error handled in hook
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    try {
-      await deleteTask(id);
-    } catch {
-      // error handled in hook
-    }
-  };
-
-  const handleToggle = async (id: string) => {
-    try {
-      await toggleTask(id);
-    } catch {
-      // error handled in hook
-    }
-  };
-
-  const handleAddSubtask = async (taskId: string, title: string) => {
-    try {
-      await addSubtask(taskId, title);
-    } catch {
-      // error handled in hook
-    }
-  };
-
-  const handleToggleSubtask = async (taskId: string, subtaskId: string) => {
-    try {
-      await toggleSubtask(taskId, subtaskId);
-    } catch {
-      // error handled in hook
-    }
-  };
-
-  const handleDeleteSubtask = async (taskId: string, subtaskId: string) => {
-    try {
-      await deleteSubtask(taskId, subtaskId);
     } catch {
       // error handled in hook
     }
@@ -324,18 +283,18 @@ export function Dashboard() {
             </div>
           ) : (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={orderedTasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+              <SortableContext items={taskOrder} strategy={verticalListSortingStrategy}>
                 <AnimatePresence mode="popLayout">
                   {orderedTasks.map((task) => (
                     <TaskCard
                       key={task.id}
                       task={task}
-                      onToggle={handleToggle}
-                      onDelete={handleDelete}
+                      onToggle={toggleTask}
+                      onDelete={deleteTask}
                       onEdit={setEditingTask}
-                      onAddSubtask={handleAddSubtask}
-                      onToggleSubtask={handleToggleSubtask}
-                      onDeleteSubtask={handleDeleteSubtask}
+                      onAddSubtask={addSubtask}
+                      onToggleSubtask={toggleSubtask}
+                      onDeleteSubtask={deleteSubtask}
                     />
                   ))}
                 </AnimatePresence>
